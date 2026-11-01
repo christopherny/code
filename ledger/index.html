@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6f5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="出納帳">
+<title>出納帳</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  :root {
+    --bg: #f4f6f5; --card: #fff; --text: #1d2321; --muted: #6b7672;
+    --line: #dde3e0; --accent: #1f6f5c; --out: #c0392b; --in: #1e7bc4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121614; --card: #1c211f; --text: #e6ece9; --muted: #92a09a;
+            --line: #2c3431; --accent: #3fae8f; --out: #ef6b5b; --in: #5aaeea; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+         padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom)); }
+  main { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 16px 0 12px; display: flex; justify-content: space-between; align-items: center; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .seg button { font-size: 17px; padding: 12px; border-radius: 10px; border: 2px solid var(--line);
+                background: transparent; color: var(--muted); font-weight: 600; }
+  .seg button[aria-pressed="true"].out { border-color: var(--out); color: #fff; background: var(--out); }
+  .seg button[aria-pressed="true"].in  { border-color: var(--in);  color: #fff; background: var(--in); }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input { width: 100%; font-size: 18px; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+          background: var(--bg); color: var(--text); }
+  input#amount { font-size: 28px; font-weight: 700; text-align: right; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .primary { width: 100%; margin-top: 14px; font-size: 18px; font-weight: 700; padding: 14px;
+             border: 0; border-radius: 12px; background: var(--accent); color: #fff; }
+  .primary:active { opacity: .8; }
+  .sum { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; gap: 4px; }
+  .sum div span { display: block; font-size: 12px; color: var(--muted); }
+  .sum div b { font-size: 17px; }
+  .month { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .month button { border: 1px solid var(--line); background: transparent; color: var(--text);
+                  border-radius: 8px; padding: 6px 12px; font-size: 16px; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center;
+       padding: 10px 0; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  li .d { font-size: 13px; color: var(--muted); }
+  li .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li .a { font-weight: 700; }
+  li .a.out { color: var(--out); } li .a.in { color: var(--in); }
+  li button { border: 0; background: transparent; color: var(--muted); font-size: 18px; padding: 4px 6px; }
+  .empty { color: var(--muted); text-align: center; padding: 16px 0; }
+  .export { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .export button { padding: 12px; font-size: 15px; border-radius: 10px; border: 1px solid var(--accent);
+                   background: transparent; color: var(--accent); font-weight: 600; }
+  .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+  .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+           background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 20px; font-size: 15px;
+           opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<main>
+  <h1>出納帳 <small id="balanceTop" style="font-size:14px;color:var(--muted)"></small></h1>
+
+  <form class="card" id="form" autocomplete="off">
+    <div class="seg" role="group" aria-label="区分">
+      <button type="button" class="out" data-kind="支出" aria-pressed="true">支出</button>
+      <button type="button" class="in" data-kind="収入" aria-pressed="false">収入</button>
+    </div>
+    <label for="amount">金額（円）</label>
+    <input id="amount" inputmode="numeric" pattern="[0-9,]*" placeholder="0" required>
+    <label for="memo">内容</label>
+    <input id="memo" list="memoList" placeholder="例：昼食、交通費、給与">
+    <datalist id="memoList"></datalist>
+    <label for="date">日付</label>
+    <input id="date" type="date" required>
+    <button class="primary" type="submit">登録</button>
+  </form>
+
+  <section class="card">
+    <div class="month">
+      <button type="button" id="prev" aria-label="前の月">‹</button>
+      <b id="monthLabel"></b>
+      <button type="button" id="next" aria-label="次の月">›</button>
+    </div>
+    <div class="sum">
+      <div><span>収入</span><b id="sumIn" style="color:var(--in)"></b></div>
+      <div><span>支出</span><b id="sumOut" style="color:var(--out)"></b></div>
+      <div><span>差引</span><b id="sumDiff"></b></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <ul id="list"></ul>
+  </section>
+
+  <section class="card">
+    <div class="export">
+      <button type="button" id="share">Excelを送る</button>
+      <button type="button" id="download">Excelを保存</button>
+    </div>
+    <p class="note">データはこの端末内に保存されます。機種変更やブラウザのデータ削除に備えて、ときどきExcelを送っておくと安心です。</p>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const KEY = 'ledger.entries.v1';
+const $ = (id) => document.getElementById(id);
+const yen = (n) => '¥' + n.toLocaleString('ja-JP');
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(entries)); }
+  catch { toast('保存できませんでした'); }
+}
+let entries = load();
+let kind = '支出';
+let viewMonth = today().slice(0, 7);
+
+// 永続ストレージを要求（ブラウザに勝手に消されにくくする）
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+function sorted() {
+  return [...entries].sort((a, b) => a.date.localeCompare(b.date) || a.created - b.created);
+}
+
+function render() {
+  const [y, m] = viewMonth.split('-');
+  $('monthLabel').textContent = `${y}年${Number(m)}月`;
+  const month = sorted().filter((e) => e.date.startsWith(viewMonth));
+  const sIn = month.filter((e) => e.kind === '収入').reduce((s, e) => s + e.amount, 0);
+  const sOut = month.filter((e) => e.kind === '支出').reduce((s, e) => s + e.amount, 0);
+  $('sumIn').textContent = yen(sIn);
+  $('sumOut').textContent = yen(sOut);
+  $('sumDiff').textContent = yen(sIn - sOut);
+  const total = entries.reduce((s, e) => s + (e.kind === '収入' ? e.amount : -e.amount), 0);
+  $('balanceTop').textContent = '残高 ' + yen(total);
+
+  const list = $('list');
+  list.innerHTML = '';
+  if (!month.length) {
+    list.innerHTML = '<li class="empty" style="display:block">この月の記録はありません</li>';
+  }
+  for (const e of month.reverse()) {
+    const li = document.createElement('li');
+    const cls = e.kind === '収入' ? 'in' : 'out';
+    li.innerHTML = `<span class="d"></span><span class="t"></span><span class="a ${cls}"></span><button aria-label="削除">✕</button>`;
+    li.querySelector('.d').textContent = `${Number(e.date.slice(5, 7))}/${Number(e.date.slice(8))}`;
+    li.querySelector('.t').textContent = e.memo || '（内容なし）';
+    li.querySelector('.a').textContent = (e.kind === '収入' ? '+' : '−') + yen(e.amount);
+    li.querySelector('button').onclick = () => {
+      if (confirm(`「${e.memo || '内容なし'} ${yen(e.amount)}」を削除しますか？`)) {
+        entries = entries.filter((x) => x.id !== e.id); save(); render();
+      }
+    };
+    list.appendChild(li);
+  }
+
+  // 内容の入力候補（よく使うもの順）
+  const freq = {};
+  entries.forEach((e) => { if (e.memo) freq[e.memo] = (freq[e.memo] || 0) + 1; });
+  $('memoList').innerHTML = '';
+  Object.keys(freq).sort((a, b) => freq[b] - freq[a]).slice(0, 30).forEach((m) => {
+    const o = document.createElement('option'); o.value = m; $('memoList').appendChild(o);
+  });
+}
+
+document.querySelectorAll('.seg button').forEach((b) => {
+  b.onclick = () => {
+    kind = b.dataset.kind;
+    document.querySelectorAll('.seg button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+  };
+});
+
+$('amount').addEventListener('input', (ev) => {
+  const digits = ev.target.value.replace(/[^\d]/g, '').replace(/^0+(?=\d)/, '');
+  ev.target.value = digits ? Number(digits).toLocaleString('ja-JP') : '';
+});
+
+$('form').onsubmit = (ev) => {
+  ev.preventDefault();
+  const amount = Number($('amount').value.replace(/[^\d]/g, ''));
+  if (!amount) { toast('金額を入力してください'); $('amount').focus(); return; }
+  const date = $('date').value || today();
+  entries.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
+                 date, kind, amount, memo: $('memo').value.trim(), created: Date.now() });
+  save();
+  $('amount').value = ''; $('memo').value = '';
+  viewMonth = date.slice(0, 7);
+  render();
+  toast(`${kind} ${yen(amount)} を登録しました`);
+};
+
+function shiftMonth(delta) {
+  const [y, m] = viewMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  viewMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  render();
+}
+$('prev').onclick = () => shiftMonth(-1);
+$('next').onclick = () => shiftMonth(1);
+
+// ---- Excel 出力 ----
+function buildWorkbook() {
+  const header = ['日付', '区分', '内容', '収入', '支出', '残高'];
+  const rows = sorted();
+  const ws = XLSX.utils.aoa_to_sheet([header]);
+  rows.forEach((e, i) => {
+    const r = i + 2; // Excel の行番号
+    const [y, m, d] = e.date.split('-').map(Number);
+    XLSX.utils.sheet_add_aoa(ws, [[
+      new Date(Date.UTC(y, m - 1, d)),
+      e.kind,
+      e.memo,
+      e.kind === '収入' ? e.amount : null,
+      e.kind === '支出' ? e.amount : null,
+      { t: 'n', f: r === 2 ? `D2-E2` : `F${r - 1}+D${r}-E${r}` },
+    ]], { origin: `A${r}`, cellDates: true });
+    ws[`A${r}`].z = 'yyyy/mm/dd';
+    ['D', 'E', 'F'].forEach((c) => { if (ws[`${c}${r}`]) ws[`${c}${r}`].z = '#,##0'; });
+  });
+  ws['!cols'] = [{ wch: 12 }, { wch: 6 }, { wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  ws['!autofilter'] = { ref: `A1:F${Math.max(rows.length + 1, 1)}` };
+
+  // 月別集計シート
+  const months = [...new Set(rows.map((e) => e.date.slice(0, 7)))];
+  const sum = [['月', '収入', '支出', '差引']];
+  months.forEach((mo) => {
+    const ms = rows.filter((e) => e.date.startsWith(mo));
+    const i = ms.filter((e) => e.kind === '収入').reduce((s, e) => s + e.amount, 0);
+    const o = ms.filter((e) => e.kind === '支出').reduce((s, e) => s + e.amount, 0);
+    sum.push([mo.replace('-', '/'), i, o, i - o]);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(sum);
+  ws2['!cols'] = [{ wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '出納帳');
+  XLSX.utils.book_append_sheet(wb, ws2, '月別集計');
+  return wb;
+}
+
+function makeFile() {
+  if (typeof XLSX === 'undefined') { toast('Excel出力の部品を読み込めていません（一度オンラインで開いてください）'); return null; }
+  if (!entries.length) { toast('まだ記録がありません'); return null; }
+  const name = `出納帳_${today().replace(/-/g, '')}.xlsx`;
+  const data = XLSX.write(buildWorkbook(), { bookType: 'xlsx', type: 'array' });
+  return new File([data], name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function download(file) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+
+$('share').onclick = async () => {
+  const file = makeFile(); if (!file) return;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: file.name }); }
+    catch (err) { if (err.name !== 'AbortError') download(file); }
+  } else {
+    download(file);
+  }
+};
+$('download').onclick = () => { const f = makeFile(); if (f) download(f); };
+
+$('date').value = today();
+render();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
