@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f766e" />
+  <title>カード買取チェッカー</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>カード買取チェッカー</h1>
+    <p class="sub">ショーケースを撮る → 買取価格と照合 → お得度がわかる</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="scan" aria-selected="true">照合</button>
+    <button role="tab" data-tab="buyback" aria-selected="false">買取表 <span id="buyback-count" class="pill">0</span></button>
+    <button role="tab" data-tab="settings" aria-selected="false">設定</button>
+  </nav>
+
+  <main>
+    <!-- 照合 -->
+    <section id="tab-scan" class="panel">
+      <div id="setup-hint" class="callout" hidden>
+        はじめに <b>設定</b> で API キーを入れ、<b>買取表</b> に照合先の買取価格を登録してください。
+      </div>
+
+      <label class="big-button">
+        <input id="showcase-input" type="file" accept="image/*" capture="environment" multiple hidden />
+        📷 ショーケースを撮影 / 写真を選ぶ
+      </label>
+      <p class="hint">1枚の写真に収まる範囲で、値札まで写るように撮ると精度が上がります。複数枚まとめて選択もできます。</p>
+
+      <div id="scan-status" class="status" hidden></div>
+
+      <div id="summary" class="summary" hidden></div>
+
+      <div class="toolbar" id="result-toolbar" hidden>
+        <label>並び順
+          <select id="sort-select">
+            <option value="ratio">お得度（買取率）順</option>
+            <option value="diff">差額順</option>
+            <option value="price">販売価格順</option>
+            <option value="position">写真の並び順</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="only-matched" /> 買取データありのみ</label>
+      </div>
+
+      <ul id="results" class="cards"></ul>
+    </section>
+
+    <!-- 買取表 -->
+    <section id="tab-buyback" class="panel" hidden>
+      <h2>買取表を登録</h2>
+      <p class="hint">売り先にするお店の買取価格を登録します。複数店舗を登録すると、一番高い買取価格で比較します。</p>
+
+      <div class="field">
+        <label for="shop-name">店舗名</label>
+        <input id="shop-name" type="text" placeholder="例: ○○カード 秋葉原店" />
+      </div>
+
+      <div class="grid2">
+        <label class="big-button secondary">
+          <input id="buyback-image-input" type="file" accept="image/*" multiple hidden />
+          🧾 買取表の写真・スクショから読み取る
+        </label>
+        <button class="big-button secondary" id="toggle-csv">📋 CSV / 表を貼り付ける</button>
+      </div>
+
+      <div id="csv-area" hidden>
+        <p class="hint">1行に「カード名, 型番, レアリティ, 買取価格」（ヘッダー行あり・タブ区切りも可）。スプレッドシートからそのまま貼り付けOK。</p>
+        <textarea id="csv-text" rows="6" placeholder="カード名,型番,レアリティ,買取価格&#10;リザードンex,SV3 134/108,SAR,12000"></textarea>
+        <button id="csv-import" class="primary">取り込む</button>
+      </div>
+
+      <details class="manual">
+        <summary>1件ずつ手入力</summary>
+        <form id="manual-form" class="manual-form">
+          <input name="name" placeholder="カード名" required />
+          <input name="card_number" placeholder="型番（任意）" />
+          <input name="rarity" placeholder="レア（任意）" />
+          <input name="price" placeholder="買取価格" inputmode="numeric" required />
+          <button class="primary">追加</button>
+        </form>
+      </details>
+
+      <div id="buyback-status" class="status" hidden></div>
+
+      <div class="toolbar">
+        <input id="buyback-filter" type="search" placeholder="絞り込み（カード名・型番・店舗）" />
+        <button id="export-csv">CSV 書き出し</button>
+        <button id="clear-buyback" class="danger">全削除</button>
+      </div>
+      <div class="table-wrap">
+        <table class="buyback-table">
+          <thead><tr><th>カード名</th><th>型番</th><th>レア</th><th class="num">買取</th><th>店舗</th><th></th></tr></thead>
+          <tbody id="buyback-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 設定 -->
+    <section id="tab-settings" class="panel" hidden>
+      <h2>設定</h2>
+      <div class="field">
+        <label for="api-key">Anthropic API キー</label>
+        <input id="api-key" type="password" autocomplete="off" placeholder="sk-ant-..." />
+        <p class="hint">キーはこの端末のブラウザにだけ保存され、Anthropic の API に直接送信されます。共用端末では使わないでください。</p>
+      </div>
+      <div class="field">
+        <label for="model">モデル</label>
+        <input id="model" type="text" />
+      </div>
+      <div class="field">
+        <label for="threshold">「お得」と表示する買取率のしきい値（%）</label>
+        <input id="threshold" type="number" min="1" max="200" step="1" />
+        <p class="hint">買取率 = 買取価格 ÷ 販売価格。100% 以上なら買ってすぐ売っても利益が出ます。</p>
+      </div>
+      <button id="save-settings" class="primary">保存</button>
+      <span id="settings-saved" class="saved" hidden>保存しました</span>
+    </section>
+  </main>
+
+  <template id="card-template">
+    <li class="card">
+      <div class="card-head">
+        <div class="title">
+          <input class="name" aria-label="カード名" />
+          <div class="meta">
+            <input class="number" aria-label="型番" placeholder="型番" />
+            <input class="rarity" aria-label="レアリティ" placeholder="レア" />
+          </div>
+          <div class="pos"></div>
+        </div>
+        <div class="badge"></div>
+      </div>
+      <div class="prices">
+        <div><span class="label">販売</span><span class="yen-input">¥<input class="sale" inputmode="numeric" /></span></div>
+        <div><span class="label">最高買取</span><span class="buy">—</span><span class="shop"></span></div>
+        <div><span class="label">差額</span><span class="diff">—</span></div>
+        <div><span class="label">買取率</span><span class="ratio">—</span></div>
+      </div>
+      <div class="bar"><span></span></div>
+      <div class="card-foot">
+        <select class="candidate" aria-label="照合先の候補"></select>
+        <button class="web">🔎 Webで買取相場</button>
+        <button class="remove" aria-label="削除">✕</button>
+      </div>
+      <div class="web-result" hidden></div>
+    </li>
+  </template>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

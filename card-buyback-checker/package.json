@@ -1,0 +1,9 @@
+{
+  "name": "card-buyback-checker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "start": "npx --yes serve@14.2.4 ."
+  }
+}
